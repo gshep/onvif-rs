@@ -4,6 +4,8 @@ use structopt::StructOpt;
 use url::Url;
 use xsd_types::types as xs;
 use std::time::Duration;
+use teloxide::prelude::*;
+use teloxide::types::ParseMode;
 
 #[derive(StructOpt)]
 #[structopt(name = "camera", about = "ONVIF camera control tool")]
@@ -153,7 +155,7 @@ async fn get_device_information(clients: &Clients) {
     );
 }
 
-async fn pull_messages_test(event: &soap::client::Client) {
+async fn pull_messages_test(event: &soap::client::Client, bot: &Bot) {
     match schema::event::create_pull_point_subscription(event, &Default::default()).await {
         Ok(response) => {
             println!("create_pull_point_subscription: {:#?}", response);
@@ -180,6 +182,13 @@ async fn pull_messages_test(event: &soap::client::Client) {
             {
                 Ok(pulled_messages) => {
                     println!("response: {:#?}", pulled_messages);
+                    if !pulled_messages.notification_message.is_empty() {
+                        let f = format!("```\n{:#?}\n```", pulled_messages);
+                        bot.send_message("{chat_id}".to_string(), f)
+                            .parse_mode(ParseMode::MarkdownV2)
+                            .send()
+                            .await;
+                    }
                     /*for m in pulled_messages.notification_message {
                         println!("message: {:#?}", m);
                     }*/
@@ -193,7 +202,7 @@ async fn pull_messages_test(event: &soap::client::Client) {
     }
 }
 
-async fn get_service_capabilities(clients: &Clients) {
+async fn get_service_capabilities(clients: &Clients, bot: &Bot) {
     match schema::event::get_service_capabilities(&clients.devicemgmt, &Default::default()).await {
         Ok(capability) => println!("devicemgmt: {:#?}", capability),
         Err(error) => println!("Failed to fetch devicemgmt: {}", error.to_string()),
@@ -205,7 +214,7 @@ async fn get_service_capabilities(clients: &Clients) {
             Err(error) => println!("Failed to fetch event: {}", error.to_string()),
         }
 
-        pull_messages_test(event).await;
+        pull_messages_test(event, bot).await;
     }
 
     /*if let Some(ref deviceio) = clients.deviceio {
@@ -447,13 +456,15 @@ async fn get_status(clients: &Clients) {
 async fn main() {
     env_logger::init();
 
+    let bot = Bot::new("{bot_token}");
+
     let args = Args::from_args();
     let clients = Clients::new(&args).await.unwrap();
 
     match args.cmd {
         Cmd::GetSystemDateAndTime => get_system_date_and_time(&clients).await,
         Cmd::GetCapabilities => get_capabilities(&clients).await,
-        Cmd::GetServiceCapabilities => get_service_capabilities(&clients).await,
+        Cmd::GetServiceCapabilities => get_service_capabilities(&clients, &bot).await,
         Cmd::GetStreamUris => get_stream_uris(&clients).await,
         Cmd::GetHostname => get_hostname(&clients).await,
         Cmd::SetHostname { hostname } => set_hostname(&clients, hostname).await,
@@ -464,7 +475,7 @@ async fn main() {
         Cmd::GetAll => {
             get_system_date_and_time(&clients).await;
             get_capabilities(&clients).await;
-            get_service_capabilities(&clients).await;
+            get_service_capabilities(&clients, &bot).await;
             get_stream_uris(&clients).await;
             get_hostname(&clients).await;
             get_analytics(&clients).await;
