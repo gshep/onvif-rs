@@ -12,7 +12,7 @@ pub type EndpointReference = EndpointReferenceType;
 )]
 pub struct EndpointReferenceType {
     #[yaserde(prefix = "tns", rename = "Address")]
-    pub address: AttributedURIType,
+    pub address: String,
 
     #[yaserde(prefix = "tns", rename = "ReferenceParameters")]
     pub reference_parameters: Option<ReferenceParameters>,
@@ -88,7 +88,8 @@ pub type Action = AttributedURIType;
     prefix = "tns",
     namespace = "tns: http://www.w3.org/2005/08/addressing"
 )]
-pub struct AttributedURIType {}
+pub struct AttributedURIType {
+}
 
 impl Validate for AttributedURIType {}
 

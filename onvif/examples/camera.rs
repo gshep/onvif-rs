@@ -2,6 +2,8 @@ use log::debug;
 use onvif::{schema, soap};
 use structopt::StructOpt;
 use url::Url;
+use xsd_types::types as xs;
+use std::time::Duration;
 
 #[derive(StructOpt)]
 #[structopt(name = "camera", about = "ONVIF camera control tool")]
@@ -84,6 +86,7 @@ impl Clients {
             .as_ref()
             .ok_or_else(|| "--uri must be specified.".to_string())?;
         let devicemgmt_uri = base_uri.join("onvif/device_service").unwrap();
+        println!("base_uri = {:?}, dev_uri = {:?}", base_uri, devicemgmt_uri);
         let mut out = Self {
             devicemgmt: soap::client::ClientBuilder::new(&devicemgmt_uri)
                 .credentials(creds.clone())
@@ -99,12 +102,12 @@ impl Clients {
         let services =
             schema::devicemgmt::get_services(&out.devicemgmt, &Default::default()).await?;
         for s in &services.service {
-            if !s.x_addr.starts_with(base_uri.as_str()) {
+            /*if !s.x_addr.starts_with(base_uri.as_str()) {
                 return Err(format!(
                     "Service URI {} is not within base URI {}",
                     &s.x_addr, &base_uri
                 ));
-            }
+            }*/
             let url = Url::parse(&s.x_addr).map_err(|e| e.to_string())?;
             let svc = Some(
                 soap::client::ClientBuilder::new(&url)
@@ -113,12 +116,12 @@ impl Clients {
             );
             match s.namespace.as_str() {
                 "http://www.onvif.org/ver10/device/wsdl" => {
-                    if s.x_addr != devicemgmt_uri.as_str() {
+                    /*if s.x_addr != devicemgmt_uri.as_str() {
                         return Err(format!(
                             "advertised device mgmt uri {} not expected {}",
                             &s.x_addr, &devicemgmt_uri
                         ));
-                    }
+                    }*/
                 }
                 "http://www.onvif.org/ver10/events/wsdl" => out.event = svc,
                 "http://www.onvif.org/ver10/deviceIO/wsdl" => out.deviceio = svc,
@@ -150,6 +153,46 @@ async fn get_device_information(clients: &Clients) {
     );
 }
 
+async fn pull_messages_test(event: &soap::client::Client) {
+    match schema::event::create_pull_point_subscription(event, &Default::default()).await {
+        Ok(response) => {
+            println!("create_pull_point_subscription: {:#?}", response);
+
+            let url = match Url::parse(&response.subscription_reference.address) {
+                Ok(result) => result,
+                Err(_) => return,
+            };
+
+            let pull_point = soap::client::ClientBuilder::new(&url)
+                    .credentials(event.config.credentials.clone())
+                    .timeout(Duration::from_secs(10))
+                    .build();
+
+            loop {
+
+            match schema::event::pull_messages(&pull_point, &schema::event::PullMessages{
+                    timeout: xs::Duration {
+                        seconds: 5.0,
+                        ..Default::default()
+                    },
+                    message_limit: 1000
+                }).await
+            {
+                Ok(pulled_messages) => {
+                    println!("response: {:#?}", pulled_messages);
+                    /*for m in pulled_messages.notification_message {
+                        println!("message: {:#?}", m);
+                    }*/
+                },
+                Err(e) => println!("Failed to pull message(s): {}", e.to_string()),
+            }
+
+            } // loop
+        },
+        Err(e) => println!("Failed to create PullPoint: {}", e.to_string()),
+    }
+}
+
 async fn get_service_capabilities(clients: &Clients) {
     match schema::event::get_service_capabilities(&clients.devicemgmt, &Default::default()).await {
         Ok(capability) => println!("devicemgmt: {:#?}", capability),
@@ -161,8 +204,11 @@ async fn get_service_capabilities(clients: &Clients) {
             Ok(capability) => println!("event: {:#?}", capability),
             Err(error) => println!("Failed to fetch event: {}", error.to_string()),
         }
+
+        pull_messages_test(event).await;
     }
-    if let Some(ref deviceio) = clients.deviceio {
+
+    /*if let Some(ref deviceio) = clients.deviceio {
         match schema::event::get_service_capabilities(deviceio, &Default::default()).await {
             Ok(capability) => println!("deviceio: {:#?}", capability),
             Err(error) => println!("Failed to fetch deviceio: {}", error.to_string()),
@@ -198,6 +244,7 @@ async fn get_service_capabilities(clients: &Clients) {
             Err(error) => println!("Failed to fetch analytics: {}", error.to_string()),
         }
     }
+    */
 }
 
 async fn get_system_date_and_time(clients: &Clients) {
