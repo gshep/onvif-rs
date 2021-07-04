@@ -32,7 +32,7 @@ macro_rules! warn {
 #[derive(Clone)]
 pub struct Client {
     client: reqwest::Client,
-    config: Config,
+    pub config: Config,
 }
 
 #[derive(Clone)]
@@ -91,9 +91,9 @@ impl ClientBuilder {
 }
 
 #[derive(Clone)]
-struct Config {
+pub struct Config {
     uri: Url,
-    credentials: Option<Credentials>,
+    pub credentials: Option<Credentials>,
     auth_type: AuthType,
     timeout: Duration,
 }
